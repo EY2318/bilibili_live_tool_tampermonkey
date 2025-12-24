@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         B站直播工具
 // @namespace    https://github.com/EY2318/
-// @version      0.2
+// @version      0.3
 // @description  B站直播辅助工具, 支持登录、开始直播、结束直播和更新直播信息
 // @author       LynLuc
 // @match        https://*.bilibili.com/*
@@ -14,6 +14,7 @@
 // @connect      api.live.bilibili.com
 // @connect      passport.bilibili.com
 // @license      MIT
+// @history      0.3 新增人脸认证状态检查
 // @history      0.2 修复开播API签名验证错误
 // @history      0.1 初始版本
 // ==/UserScript==
