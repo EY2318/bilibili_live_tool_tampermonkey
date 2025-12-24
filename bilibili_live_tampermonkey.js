@@ -45,6 +45,8 @@
       UPDATE_LIVE_INFO: "https://api.live.bilibili.com/room/v1/Room/updateInfo",
       GET_ROOM_INFO: "https://api.live.bilibili.com/room/v1/Room/getRoomInfo",
       GET_AREA_LIST: "https://api.live.bilibili.com/room/v1/Area/getList",
+      CHECK_FACE_AUTH:
+        "https://api.live.bilibili.com/xlive/app-blink/v1/preLive/IsUserIdentifiedByFaceAuth",
     },
   };
 
@@ -1530,6 +1532,37 @@
               ),
             },
           };
+        } else if (result && result.code === 60024) {
+          utils.log("需要人脸认证", "warning");
+          const qrUrl = result.data && result.data.qr;
+          if (qrUrl) {
+            const pollInterval = setInterval(async () => {
+              const statusResult = await this.checkFaceAuthStatus();
+              const statusText = document.getElementById(
+                "bili-face-auth-status"
+              );
+              if (statusText) {
+                if (statusResult.status && statusResult.isIdentified) {
+                  statusText.textContent = "人脸认证成功，正在重新开播...";
+                  clearInterval(pollInterval);
+                  const qrContainer = document.getElementById(
+                    "bili-face-auth-qr-container"
+                  );
+                  if (qrContainer) {
+                    qrContainer.remove();
+                  }
+                  await this.startLive(title, areaId);
+                } else {
+                  statusText.textContent = "等待人脸认证...";
+                }
+              }
+            }, 2000);
+            await this.showFaceAuthQR(qrUrl, pollInterval);
+            return { status: false, message: "需要人脸认证" };
+          } else {
+            utils.log("未获取到二维码URL", "error");
+            return { status: false, message: "未获取到二维码URL" };
+          }
         } else {
           utils.log(
             "开播失败: " + (result ? result.message : "未知错误"),
@@ -1661,6 +1694,127 @@
         utils.log("更新直播信息过程异常", "error");
         console.error(error);
         return { status: false, message: "更新直播信息过程发生异常" };
+      }
+    },
+
+    // 检查人脸认证状态
+    checkFaceAuthStatus: async function () {
+      try {
+        const payload = {
+          room_id: data.roomId,
+          face_auth_code: "60024",
+          csrf_token: data.csrf,
+          csrf: data.csrf,
+          visit_id: "",
+        };
+        const response = await utils.post(config.API.CHECK_FACE_AUTH, payload);
+        const result = utils.parseJSON(response);
+
+        if (result && result.code === 0) {
+          const isIdentified = result.data && result.data.is_identified;
+          utils.log(
+            `人脸认证状态: ${isIdentified ? "已认证" : "未认证"}`,
+            "info"
+          );
+          return { status: true, isIdentified: isIdentified };
+        } else {
+          utils.log(
+            "检查人脸认证状态失败: " + (result ? result.message : "未知错误"),
+            "error"
+          );
+          return { status: false, isIdentified: false };
+        }
+      } catch (error) {
+        utils.log("检查人脸认证状态异常", "error");
+        console.error(error);
+        return { status: false, isIdentified: false };
+      }
+    },
+
+    // 显示人脸认证二维码
+    showFaceAuthQR: async function (qrUrl, pollInterval) {
+      try {
+        utils.log("显示人脸认证二维码", "info");
+
+        const qrContainer = document.createElement("div");
+        qrContainer.id = "bili-face-auth-qr-container";
+        qrContainer.className = "protected";
+        qrContainer.style.cssText = `
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: white;
+          padding: 20px;
+          border-radius: 8px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+          z-index: 10000;
+          text-align: center;
+        `;
+
+        const title = document.createElement("div");
+        title.textContent = "请使用B站APP扫码进行人脸认证";
+        title.style.cssText = `
+          font-size: 16px;
+          font-weight: bold;
+          margin-bottom: 15px;
+          color: #333;
+        `;
+
+        const closeBtn = document.createElement("div");
+        closeBtn.textContent = "×";
+        closeBtn.style.cssText = `
+          position: absolute;
+          top: 10px;
+          right: 15px;
+          font-size: 24px;
+          cursor: pointer;
+          color: #999;
+          line-height: 1;
+        `;
+        closeBtn.onclick = function () {
+          clearInterval(pollInterval);
+          qrContainer.remove();
+        };
+
+        const qrDiv = document.createElement("div");
+        qrDiv.id = "bili-face-auth-qr";
+        qrDiv.style.cssText = `
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        `;
+
+        const statusText = document.createElement("div");
+        statusText.id = "bili-face-auth-status";
+        statusText.textContent = "等待扫码...";
+        statusText.style.cssText = `
+          margin-top: 15px;
+          font-size: 14px;
+          color: #666;
+        `;
+
+        qrContainer.appendChild(closeBtn);
+        qrContainer.appendChild(title);
+        qrContainer.appendChild(qrDiv);
+        qrContainer.appendChild(statusText);
+        document.body.appendChild(qrContainer);
+
+        await utils.loadQRCodeLib();
+        new QRCode(qrDiv, {
+          text: qrUrl,
+          width: 200,
+          height: 200,
+          colorDark: "#000000",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.H,
+        });
+
+        return qrContainer;
+      } catch (error) {
+        utils.log("显示人脸认证二维码异常", "error");
+        console.error(error);
+        return null;
       }
     },
   };
