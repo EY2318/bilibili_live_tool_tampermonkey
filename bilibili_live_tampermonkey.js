@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         B站直播工具
 // @namespace    https://github.com/EY2318/
-// @version      0.3
+// @version      0.4
 // @description  B站直播辅助工具, 支持登录、开始直播、结束直播和更新直播信息
 // @author       LynLuc
 // @match        https://*.bilibili.com/*
@@ -14,6 +14,7 @@
 // @connect      api.live.bilibili.com
 // @connect      passport.bilibili.com
 // @license      MIT
+// @history      0.4 fix Room/update
 // @history      0.3 新增人脸认证状态检查
 // @history      0.2 修复开播API签名验证错误
 // @history      0.1 初始版本
@@ -43,7 +44,7 @@
     API: {
       START_LIVE: "https://api.live.bilibili.com/room/v1/Room/startLive",
       STOP_LIVE: "https://api.live.bilibili.com/room/v1/Room/stopLive",
-      UPDATE_LIVE_INFO: "https://api.live.bilibili.com/room/v1/Room/updateInfo",
+      UPDATE_LIVE_INFO: "https://api.live.bilibili.com/room/v1/Room/update",
       GET_ROOM_INFO: "https://api.live.bilibili.com/room/v1/Room/getRoomInfo",
       GET_AREA_LIST: "https://api.live.bilibili.com/room/v1/Area/getList",
       CHECK_FACE_AUTH:
@@ -1552,7 +1553,27 @@
                   if (qrContainer) {
                     qrContainer.remove();
                   }
-                  await this.startLive(title, areaId);
+                  const startResult = await this.startLive(title, areaId);
+                  if (startResult.status) {
+                    const panel = document.getElementById("bili-live-panel");
+                    if (panel) {
+                      panel.querySelector(".status-value").className =
+                        "status-value status-on";
+                      panel.querySelector(".status-value").textContent =
+                        "直播中";
+                      panel.querySelector(".protocol-value").textContent =
+                        data.currentProtocol || "RTMP";
+                      panel.querySelector("#start-live").className =
+                        "btn-disabled";
+                      panel.querySelector("#stop-live").className =
+                        "btn-danger";
+                      panel.querySelector("#copy-rtmp").className =
+                        "btn-success";
+                      panel.querySelector("#update-live-info").className =
+                        "btn-primary";
+                    }
+                    utils.log("直播已开始", "success");
+                  }
                 } else {
                   statusText.textContent = "等待人脸认证...";
                 }
