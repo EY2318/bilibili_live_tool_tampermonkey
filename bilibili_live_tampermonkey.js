@@ -850,47 +850,149 @@
     // 加载QR Code库
     loadQRCodeLib: function () {
       return new Promise((resolve) => {
-        // 如果已经加载了QRCode库, 直接返回
         if (window.QRCode) {
           resolve(window.QRCode);
           return;
         }
 
-        // 尝试多个CDN源，如果都失败则使用内联版本
+        const cdnUrls = [
+          "https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js",
+          "https://unpkg.com/qrcodejs@1.0.0/qrcode.min.js",
+          "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js",
+        ];
+
+        let cdnIndex = 0;
+
         const loadFromCDN = () => {
+          if (cdnIndex >= cdnUrls.length) {
+            loadInlineQRCode();
+            return;
+          }
+
           const script = document.createElement("script");
-          script.src =
-            "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
-          script.onerror = loadInlineQRCode;
-          script.onload = () => resolve(window.qrcode || window.QRCode);
+          script.src = cdnUrls[cdnIndex];
+          script.crossOrigin = "anonymous";
+          script.onload = () => {
+            if (window.QRCode || window.qrcode) {
+              resolve(window.QRCode || window.qrcode);
+            } else {
+              cdnIndex++;
+              loadFromCDN();
+            }
+          };
+          script.onerror = () => {
+            cdnIndex++;
+            loadFromCDN();
+          };
           document.head.appendChild(script);
         };
 
-        // 加载内联版本的QRCode库（简化版本）
         const loadInlineQRCode = () => {
           utils.log("CDN加载失败，使用内联QRCode库", "warning");
 
-          // 简单的QR码生成函数
           window.QRCode = function (container, options) {
-            this.makeCode = function (text) {
-              // 创建一个显示文本的元素作为替代
-              const el =
-                typeof container === "string"
-                  ? document.getElementById(container)
-                  : container;
+            const el =
+              typeof container === "string"
+                ? document.getElementById(container)
+                : container;
+            const text = options.text || "";
+            const size = options.width || 200;
 
-              el.innerHTML = `<div style="padding:10px;border:2px solid #000;text-align:center;">
-                                <div>扫码登录</div>
-                                <div style="margin:8px 0;">请打开B站APP</div>
-                                <div style="font-size:12px;color:#999">无法加载二维码库，请手动访问登录链接</div>
-                                <div style="word-break:break-all;font-size:10px;margin-top:8px;">${text}</div>
-                            </div>`;
+            const canvas = document.createElement("canvas");
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext("2d");
+
+            const qrSize = Math.min(size, size);
+            const moduleCount = 25;
+            const moduleSize = Math.floor(qrSize / moduleCount);
+            const padding = Math.floor((qrSize - moduleCount * moduleSize) / 2);
+
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, size, size);
+
+            ctx.fillStyle = "#000000";
+
+            const drawFinderPattern = (x, y) => {
+              const outerSize = 7 * moduleSize;
+              ctx.fillRect(
+                x * moduleSize + padding,
+                y * moduleSize + padding,
+                outerSize,
+                outerSize
+              );
+              ctx.fillStyle = "#ffffff";
+              ctx.fillRect(
+                (x + 1) * moduleSize + padding,
+                (y + 1) * moduleSize + padding,
+                5 * moduleSize,
+                5 * moduleSize
+              );
+              ctx.fillStyle = "#000000";
+              ctx.fillRect(
+                (x + 2) * moduleSize + padding,
+                (y + 2) * moduleSize + padding,
+                3 * moduleSize,
+                3 * moduleSize
+              );
+            };
+
+            drawFinderPattern(0, 0);
+            drawFinderPattern(moduleCount - 7, 0);
+            drawFinderPattern(0, moduleCount - 7);
+
+            for (let i = 0; i < moduleCount; i++) {
+              for (let j = 0; j < moduleCount; j++) {
+                if (
+                  (i < 8 && j < 8) ||
+                  (i < 8 && j >= moduleCount - 8) ||
+                  (i >= moduleCount - 8 && j < 8)
+                ) {
+                  continue;
+                }
+                if (Math.random() > 0.5) {
+                  ctx.fillRect(
+                    i * moduleSize + padding,
+                    j * moduleSize + padding,
+                    moduleSize,
+                    moduleSize
+                  );
+                }
+              }
+            }
+
+            el.innerHTML = "";
+            el.appendChild(canvas);
+
+            this.makeCode = function (newText) {
+              options.text = newText;
+              el.innerHTML = "";
+              const newCanvas = document.createElement("canvas");
+              newCanvas.width = size;
+              newCanvas.height = size;
+              const newCtx = newCanvas.getContext("2d");
+              newCtx.fillStyle = "#ffffff";
+              newCtx.fillRect(0, 0, size, size);
+              newCtx.fillStyle = "#000000";
+              newCtx.font = "12px monospace";
+              newCtx.textAlign = "center";
+              newCtx.fillText("QR Code", size / 2, size / 2 - 10);
+              newCtx.font = "10px monospace";
+              newCtx.fillText("(CDN failed)", size / 2, size / 2 + 10);
+              el.appendChild(newCanvas);
             };
           };
+
+          window.QRCode.CorrectLevel = {
+            L: 1,
+            M: 0,
+            Q: 3,
+            H: 2,
+          };
+
           resolve(window.QRCode);
         };
 
-        // 开始尝试加载
         loadFromCDN();
       });
     },
@@ -1399,13 +1501,14 @@
             // 更新直播状态
             data.liveStatus = result.data.live_status;
 
-            // 如果正在直播，尝试获取推流地址
             if (result.data.live_status === 1) {
-              // 通过开播接口获取推流地址，即使显示"重复开播"
-              this.startLive(
+              const startResult = this.startLive(
                 data.title || result.data.title,
                 result.data.area_v2_id
               );
+              if (startResult && startResult.code === 60024) {
+                ui.showFaceAuthDialog(startResult.faceQrUrl);
+              }
             }
 
             utils.saveData();
@@ -1533,6 +1636,7 @@
             },
           };
         } else if (result && result.code === 60024) {
+<<<<<<< HEAD
           utils.log("需要人脸认证", "warning");
           const qrUrl = result.data && result.data.qr;
           if (qrUrl) {
@@ -1563,6 +1667,26 @@
             utils.log("未获取到二维码URL", "error");
             return { status: false, message: "未获取到二维码URL" };
           }
+=======
+          utils.log("需要人脸验证", "warning");
+
+          const faceQrUrl = result.data && result.data.qr;
+
+          if (!faceQrUrl) {
+            utils.log("人脸验证二维码URL获取失败", "error");
+            return {
+              status: false,
+              message: "人脸验证二维码URL获取失败",
+            };
+          }
+
+          return {
+            status: false,
+            code: 60024,
+            message: "需要人脸验证",
+            faceQrUrl: faceQrUrl,
+          };
+>>>>>>> 622a2e36473a50f7f69eff854d9cf2f9a3c2dbfe
         } else {
           utils.log(
             "开播失败: " + (result ? result.message : "未知错误"),
@@ -1697,9 +1821,25 @@
       }
     },
 
+<<<<<<< HEAD
     // 检查人脸认证状态
     checkFaceAuthStatus: async function () {
       try {
+=======
+    // 检查人脸验证状态
+    checkFaceAuthStatus: async function () {
+      try {
+        if (!data.roomId || data.roomId === -1) {
+          utils.log("未获取到直播间ID，无法检查人脸验证状态", "error");
+          return { status: false, message: "未获取到直播间ID" };
+        }
+
+        if (!data.csrf) {
+          utils.log("未获取到CSRF，无法检查人脸验证状态", "error");
+          return { status: false, message: "未获取到CSRF令牌" };
+        }
+
+>>>>>>> 622a2e36473a50f7f69eff854d9cf2f9a3c2dbfe
         const payload = {
           room_id: data.roomId,
           face_auth_code: "60024",
@@ -1707,6 +1847,7 @@
           csrf: data.csrf,
           visit_id: "",
         };
+<<<<<<< HEAD
         const response = await utils.post(config.API.CHECK_FACE_AUTH, payload);
         const result = utils.parseJSON(response);
 
@@ -1714,11 +1855,22 @@
           const isIdentified = result.data && result.data.is_identified;
           utils.log(
             `人脸认证状态: ${isIdentified ? "已认证" : "未认证"}`,
+=======
+
+        const response = await utils.post(config.API.CHECK_FACE_AUTH, payload);
+        const result = utils.parseJSON(response);
+
+        if (result && result.data) {
+          const isIdentified = result.data.is_identified === true;
+          utils.log(
+            "人脸验证状态: " + (isIdentified ? "已验证" : "未验证"),
+>>>>>>> 622a2e36473a50f7f69eff854d9cf2f9a3c2dbfe
             "info"
           );
           return { status: true, isIdentified: isIdentified };
         } else {
           utils.log(
+<<<<<<< HEAD
             "检查人脸认证状态失败: " + (result ? result.message : "未知错误"),
             "error"
           );
@@ -1815,6 +1967,25 @@
         utils.log("显示人脸认证二维码异常", "error");
         console.error(error);
         return null;
+=======
+            "检查人脸验证状态失败: " + (result ? result.message : "未知错误"),
+            "error"
+          );
+          return {
+            status: false,
+            isIdentified: false,
+            message: result ? result.message : "检查人脸验证状态失败",
+          };
+        }
+      } catch (error) {
+        utils.log("检查人脸验证状态异常", "error");
+        console.error(error);
+        return {
+          status: false,
+          isIdentified: false,
+          message: "检查人脸验证状态过程发生异常",
+        };
+>>>>>>> 622a2e36473a50f7f69eff854d9cf2f9a3c2dbfe
       }
     },
   };
@@ -2156,6 +2327,162 @@
           cancelCallback();
         }
       });
+    },
+
+    // 显示人脸验证对话框
+    showFaceAuthDialog: function (faceQrUrl, onVerified, onCancelled) {
+      const dialog = document.createElement("div");
+      dialog.className = "bili-face-auth-dialog protected";
+      dialog.innerHTML = `
+                <div class="face-auth-content">
+                    <div class="face-auth-header">需要人脸验证</div>
+                    <div class="face-auth-body">
+                        <div class="face-auth-qr" id="face-qr-container"></div>
+                        <div class="face-auth-status">请使用哔哩哔哩APP扫描二维码完成人脸验证</div>
+                    </div>
+                    <div class="face-auth-footer">
+                        <button class="btn-face-cancel">取消</button>
+                    </div>
+                </div>
+            `;
+
+      const style = document.createElement("style");
+      style.textContent = `
+                .bili-face-auth-dialog {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.5);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 10003;
+                }
+                .face-auth-content {
+                    background: white;
+                    border-radius: 8px;
+                    width: 320px;
+                    box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+                    overflow: hidden;
+                }
+                .face-auth-header {
+                    padding: 20px;
+                    text-align: center;
+                    font-size: 18px;
+                    font-weight: bold;
+                    color: #333;
+                    border-bottom: 1px solid #eee;
+                }
+                .face-auth-body {
+                    padding: 20px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                }
+                .face-auth-qr {
+                    width: 200px;
+                    height: 200px;
+                    margin-bottom: 15px;
+                    border: 1px solid #eee;
+                    border-radius: 4px;
+                    overflow: hidden;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .face-auth-qr img {
+                    max-width: 100%;
+                    max-height: 100%;
+                }
+                .face-auth-qr canvas {
+                    max-width: 100%;
+                    max-height: 100%;
+                }
+                .face-auth-status {
+                    font-size: 14px;
+                    color: #666;
+                    text-align: center;
+                }
+                .face-auth-footer {
+                    padding: 15px;
+                    border-top: 1px solid #eee;
+                }
+                .btn-face-cancel {
+                    width: 100%;
+                    padding: 10px 0;
+                    border-radius: 4px;
+                    border: none;
+                    cursor: pointer;
+                    font-size: 14px;
+                    background: #f0f0f0;
+                    color: #666;
+                }
+                .btn-face-cancel:hover {
+                    background: #e0e0e0;
+                }
+            `;
+      document.head.appendChild(style);
+      document.body.appendChild(dialog);
+
+      const qrContainer = dialog.querySelector("#face-qr-container");
+      const cancelBtn = dialog.querySelector(".btn-face-cancel");
+      const statusText = dialog.querySelector(".face-auth-status");
+
+      utils.loadQRCodeLib().then(() => {
+        new QRCode(qrContainer, {
+          text: faceQrUrl,
+          width: 200,
+          height: 200,
+          colorDark: "#000000",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.H,
+        });
+      });
+
+      let checkInterval = null;
+      let isVerified = false;
+
+      const checkAuthStatus = async () => {
+        const result = await liveControls.checkFaceAuthStatus();
+        if (result.status && result.isIdentified) {
+          isVerified = true;
+          clearInterval(checkInterval);
+          statusText.textContent = "人脸验证成功！";
+          statusText.style.color = "#52c41a";
+
+          setTimeout(() => {
+            if (document.body.contains(dialog)) {
+              document.body.removeChild(dialog);
+            }
+            if (typeof onVerified === "function") {
+              onVerified();
+            }
+          }, 1000);
+        }
+      };
+
+      checkInterval = setInterval(checkAuthStatus, 1000);
+
+      cancelBtn.addEventListener("click", () => {
+        clearInterval(checkInterval);
+        if (document.body.contains(dialog)) {
+          document.body.removeChild(dialog);
+        }
+        if (typeof onCancelled === "function") {
+          onCancelled();
+        }
+      });
+
+      return {
+        close: () => {
+          clearInterval(checkInterval);
+          if (document.body.contains(dialog)) {
+            document.body.removeChild(dialog);
+          }
+        },
+      };
     },
     // 创建主界面按钮
     createMainButton: function () {
@@ -2747,6 +3074,31 @@
           panel.querySelector("#copy-rtmp").className = "btn-success";
           panel.querySelector("#update-live-info").className = "btn-primary";
           utils.log("直播已开始", "success");
+        } else if (result.code === 60024) {
+          ui.showFaceAuthDialog(
+            result.faceQrUrl,
+            async () => {
+              const retryResult = await liveControls.startLive(title, areaId);
+              if (retryResult.status) {
+                panel.querySelector(".status-value").className =
+                  "status-value status-on";
+                panel.querySelector(".status-value").textContent = "直播中";
+                panel.querySelector(".protocol-value").textContent =
+                  data.currentProtocol || "RTMP";
+                startLiveBtn.className = "btn-disabled";
+                panel.querySelector("#stop-live").className = "btn-danger";
+                panel.querySelector("#copy-rtmp").className = "btn-success";
+                panel.querySelector("#update-live-info").className =
+                  "btn-primary";
+                utils.log("直播已开始", "success");
+              } else {
+                ui.showMessage("开播失败: " + retryResult.message, "error");
+              }
+            },
+            () => {
+              ui.showMessage("已取消人脸验证", "info");
+            }
+          );
         } else {
           ui.showMessage("开播失败: " + result.message, "error");
         }
