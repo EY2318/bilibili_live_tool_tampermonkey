@@ -1636,7 +1636,6 @@
             },
           };
         } else if (result && result.code === 60024) {
-<<<<<<< HEAD
           utils.log("需要人脸认证", "warning");
           const qrUrl = result.data && result.data.qr;
           if (qrUrl) {
@@ -1667,26 +1666,6 @@
             utils.log("未获取到二维码URL", "error");
             return { status: false, message: "未获取到二维码URL" };
           }
-=======
-          utils.log("需要人脸验证", "warning");
-
-          const faceQrUrl = result.data && result.data.qr;
-
-          if (!faceQrUrl) {
-            utils.log("人脸验证二维码URL获取失败", "error");
-            return {
-              status: false,
-              message: "人脸验证二维码URL获取失败",
-            };
-          }
-
-          return {
-            status: false,
-            code: 60024,
-            message: "需要人脸验证",
-            faceQrUrl: faceQrUrl,
-          };
->>>>>>> 622a2e36473a50f7f69eff854d9cf2f9a3c2dbfe
         } else {
           utils.log(
             "开播失败: " + (result ? result.message : "未知错误"),
@@ -1821,25 +1800,9 @@
       }
     },
 
-<<<<<<< HEAD
     // 检查人脸认证状态
     checkFaceAuthStatus: async function () {
       try {
-=======
-    // 检查人脸验证状态
-    checkFaceAuthStatus: async function () {
-      try {
-        if (!data.roomId || data.roomId === -1) {
-          utils.log("未获取到直播间ID，无法检查人脸验证状态", "error");
-          return { status: false, message: "未获取到直播间ID" };
-        }
-
-        if (!data.csrf) {
-          utils.log("未获取到CSRF，无法检查人脸验证状态", "error");
-          return { status: false, message: "未获取到CSRF令牌" };
-        }
-
->>>>>>> 622a2e36473a50f7f69eff854d9cf2f9a3c2dbfe
         const payload = {
           room_id: data.roomId,
           face_auth_code: "60024",
@@ -1847,7 +1810,6 @@
           csrf: data.csrf,
           visit_id: "",
         };
-<<<<<<< HEAD
         const response = await utils.post(config.API.CHECK_FACE_AUTH, payload);
         const result = utils.parseJSON(response);
 
@@ -1855,22 +1817,11 @@
           const isIdentified = result.data && result.data.is_identified;
           utils.log(
             `人脸认证状态: ${isIdentified ? "已认证" : "未认证"}`,
-=======
-
-        const response = await utils.post(config.API.CHECK_FACE_AUTH, payload);
-        const result = utils.parseJSON(response);
-
-        if (result && result.data) {
-          const isIdentified = result.data.is_identified === true;
-          utils.log(
-            "人脸验证状态: " + (isIdentified ? "已验证" : "未验证"),
->>>>>>> 622a2e36473a50f7f69eff854d9cf2f9a3c2dbfe
             "info"
           );
           return { status: true, isIdentified: isIdentified };
         } else {
           utils.log(
-<<<<<<< HEAD
             "检查人脸认证状态失败: " + (result ? result.message : "未知错误"),
             "error"
           );
@@ -1967,25 +1918,6 @@
         utils.log("显示人脸认证二维码异常", "error");
         console.error(error);
         return null;
-=======
-            "检查人脸验证状态失败: " + (result ? result.message : "未知错误"),
-            "error"
-          );
-          return {
-            status: false,
-            isIdentified: false,
-            message: result ? result.message : "检查人脸验证状态失败",
-          };
-        }
-      } catch (error) {
-        utils.log("检查人脸验证状态异常", "error");
-        console.error(error);
-        return {
-          status: false,
-          isIdentified: false,
-          message: "检查人脸验证状态过程发生异常",
-        };
->>>>>>> 622a2e36473a50f7f69eff854d9cf2f9a3c2dbfe
       }
     },
   };
